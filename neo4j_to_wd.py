@@ -138,8 +138,11 @@ class Bot:
             if len(curie) > 100:
                 continue
             synonyms = set(curie_synonyms[curie]) | {curie_preflabel[curie]}
-            self.create_item(label, curie_descr[curie][:250], curie, login,
+            self.create_item(label, curie_descr[curie], curie, login,
                              synonyms=synonyms, type_of=curie_type[curie])
+            #todo: need to handle NonUniqueLabelDescriptionPairError somehow
+            # as some items may have the same label but different IDs, and wikibase will throw an error
+            # workaround, catch this and append a random string to the description??
 
     def create_edges(self):
         edges = self.edges
