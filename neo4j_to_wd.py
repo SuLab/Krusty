@@ -3,6 +3,10 @@ import pandas as pd
 from tqdm import tqdm
 from wikidataintegrator import wdi_core, wdi_helpers, wdi_login
 from wikidataintegrator.wdi_helpers import try_write
+from more_itertools import chunked
+
+pd.options.display.width = 200
+pd.set_option("display.max_column", 12)
 
 try:
     from local import WDUSER, WDPASS
@@ -89,7 +93,8 @@ class Bot:
 
         item = self.item_engine(item_name=label, domain="foo", data=s, core_props=[self.dbxref_pid])
         item.set_label(label)
-        item.set_description(description)
+        if description:
+            item.set_description(description)
         if synonyms:
             item.set_aliases(synonyms)
         item.write(login)
@@ -122,54 +127,86 @@ class Bot:
         for t in types:
             self.create_item(t, "", t, self.login)
 
-    def create_nodes(self):
+    def create_nodes(self, force=False):
         nodes = self.nodes
-        curie_label = dict(zip(nodes['id:ID'], nodes['name']))
+        curie_label = dict(zip(nodes['id:ID'], nodes['preflabel']))
         curie_label = {k: v for k, v in curie_label.items() if k}
         curie_label = {k: v if v else k for k, v in curie_label.items()}
         curie_synonyms = dict(zip(nodes['id:ID'], nodes['synonyms:IGNORE'].map(lambda x: x.split("|") if x else [])))
         curie_descr = dict(zip(nodes['id:ID'], nodes['description']))
-        curie_preflabel = dict(zip(nodes['id:ID'], nodes['preflabel']))
+        curie_name = dict(zip(nodes['id:ID'], nodes['name']))
         curie_type = dict(zip(nodes['id:ID'], nodes[':LABEL']))
 
         curie_label = sorted(curie_label.items(), key=lambda x: x[0])
-
-        for curie, label in tqdm(curie_label):
+        t = tqdm(curie_label)
+        for curie, label in t:
+            t.set_description(label)
             if len(curie) > 100:
                 continue
-            synonyms = set(curie_synonyms[curie]) | {curie_preflabel[curie]}
+            synonyms = (set(curie_synonyms[curie]) | {curie_name[curie]}) - {label} - {''}
             self.create_item(label, curie_descr[curie], curie, login,
-                             synonyms=synonyms, type_of=curie_type[curie])
-            #todo: need to handle NonUniqueLabelDescriptionPairError somehow
-            # as some items may have the same label but different IDs, and wikibase will throw an error
-            # workaround, catch this and append a random string to the description??
+                             synonyms=synonyms, type_of=curie_type[curie], force=force)
 
     def create_edges(self):
         edges = self.edges
 
         subj_edges = edges.groupby(":START_ID")
 
+        # subj, rows = "UniProt:Q96IV0", edges[edges[':START_ID']=='UniProt:Q96IV0']
         for subj, rows in tqdm(subj_edges, total=len(subj_edges)):
-            self.create_subj_edges(rows)
+            subj = self.dbxref_qid.get(rows.iloc[0][':START_ID'])
+            ss = self.create_subj_edges(rows)
+            if not ss:
+                continue
+            item = self.item_engine(wd_item_id=subj, data=ss, domain="asdf")
+            wdi_helpers.try_write(item, rows.iloc[0][':START_ID'], self.dbxref_pid, login)
 
     def create_subj_edges(self, rows):
         # input is a dataframe where all the subjects are the same
         # i.e. write to one item
-        pass
+        spo_edges = rows.groupby([":START_ID", ":TYPE", ":END_ID"])
+        # spo, spo_rows = ('UniProt:Q96IV0', 'RO:0002331', 'GO:0006517'), rows[rows[':END_ID'] == 'GO:0006517']
+        ss = []
+        for spo, spo_rows in spo_edges:
+            refs = self.create_statement_ref(spo_rows)
+            s = self.create_statement(spo_rows.iloc[0])
+            if not s:
+                continue
+            s.references = refs
+            ss.append(s)
+        return ss
+
+    # noinspection PyTypeChecker
+    def create_statement_ref(self, rows):
+        refs = []
+        for _, row in rows.iterrows():
+            rst = chunked(row.reference_supporting_text, 400)
+            ref = [
+                wdi_core.WDString("".join(rst_chunk), self.uri_pid["http://reference_supporting_text"],
+                                  is_reference=True)
+                for rst_chunk in rst]
+
+            ref.extend(
+                [wdi_core.WDUrl(ref_uri, self.uri_pid['http://www.wikidata.org/entity/P854'], is_reference=True)
+                 for ref_uri in row.reference_uri.split("|")] if row.reference_uri else []
+            )
+            refs.append(ref)
+        return refs
 
     def create_statement(self, row):
-
         subj = self.dbxref_qid.get(row[':START_ID'])
-        pred = self.uri_pid.get(row[':TYPE'])
+        pred = self.uri_pid.get(row['property_uri'])
         if row[':TYPE'] == "skos:exactMatch":
             obj = row[':END_ID']
         else:
             obj = self.dbxref_qid.get(row[':END_ID'])
 
+        # print(subj, pred, obj)
         if not (subj and pred and obj):
             return None
 
-        print(subj, pred, obj)
+        s = wdi_core.WDItemID(obj, pred)
+        return s
 
 
 edges = pd.read_csv("ngly1_statements.csv.gz", dtype=str)
@@ -179,9 +216,18 @@ nodes = pd.read_csv("ngly1_concepts.csv.gz", dtype=str)
 nodes = nodes.fillna("")
 nodes = nodes.replace('None', "")
 
-login = wdi_login.WDLogin(user=WDUSER, pwd=WDPASS, mediawiki_api_url=mediawiki_api_url)
-s = Bot(nodes, edges, login)
+# handle nodes with no label
+blank = (nodes.preflabel == "") & (nodes.name == "")
+nodes.loc[blank, "preflabel"] = nodes.loc[blank, "id:ID"]
 
-s.create_properties()
-s.create_classes()
+# handle non-unique label/descr
+dupe = nodes.duplicated(subset=['preflabel'], keep=False)
+# append the ID to the label
+nodes.loc[dupe, "preflabel"] = nodes.loc[dupe, "preflabel"] + " (" + nodes.loc[dupe, "id:ID"] + ")"
+
+login = wdi_login.WDLogin(user=WDUSER, pwd=WDPASS, mediawiki_api_url=mediawiki_api_url)
+bot = Bot(nodes, edges, login)
+
+bot.create_properties()
+bot.create_classes()
 # s.create_nodes()
