@@ -63,14 +63,14 @@ class Bot:
         # all edges will be an item except for skos:exactMatch
         del curie_label['skos:exactMatch']
         for curie, label in curie_label.items():
-            self.create_property(label, "", "wikibase-item", curie_uri[curie], self.login)
+            self.create_property(label, "", "wikibase-item", curie_uri[curie])
 
-        self.create_property("exact match", "", "string", curie_uri["skos:exactMatch"], self.login)
-        self.create_property("stated in", "", "wikibase-item", "http://www.wikidata.org/entity/P248", self.login)
-        self.create_property("reference uri", "", "url", "http://www.wikidata.org/entity/P854", self.login)
-        self.create_property("reference supporting text", "", "string", "http://reference_supporting_text", self.login)
+        self.create_property("exact match", "", "string", curie_uri["skos:exactMatch"])
+        self.create_property("stated in", "", "wikibase-item", "http://www.wikidata.org/entity/P248")
+        self.create_property("reference uri", "", "url", "http://www.wikidata.org/entity/P854")
+        self.create_property("reference supporting text", "", "string", "http://reference_supporting_text")
 
-    def create_property(self, label, description, property_datatype, uri, login):
+    def create_property(self, label, description, property_datatype, uri):
         if uri in self.uri_pid:
             print("property already exists: {} {}".format(self.uri_pid[uri], uri))
             return None
@@ -78,10 +78,10 @@ class Bot:
         item = self.item_engine(item_name=label, domain="foo", data=s, core_props=[self.dbxref_pid])
         item.set_label(label)
         item.set_description(description)
-        item.write(login, entity_type="property", property_datatype=property_datatype)
+        item.write(self.login, entity_type="property", property_datatype=property_datatype)
         self.uri_pid[uri] = item.wd_item_id
 
-    def create_item(self, label, description, ext_id, login, synonyms=None, type_of=None, force=False):
+    def create_item(self, label, description, ext_id, synonyms=None, type_of=None, force=False):
         if (not force) and ext_id in self.dbxref_qid:
             print("item already exists: {} {}".format(self.dbxref_qid[ext_id], ext_id))
             return None
@@ -96,7 +96,7 @@ class Bot:
             item.set_description(description)
         if synonyms:
             item.set_aliases(synonyms)
-        item.write(login)
+        item.write(self.login)
         self.dbxref_qid[ext_id] = item.wd_item_id
 
     def get_equiv_prop_pid(self):
@@ -124,7 +124,7 @@ class Bot:
         # from the nodes file, get the "type", which neo4j calls ":LABEL" for some strange reason
         types = set(self.nodes[':LABEL'])
         for t in types:
-            self.create_item(t, "", t, self.login)
+            self.create_item(t, "", t)
 
     def create_nodes(self, force=False):
         nodes = self.nodes
@@ -143,8 +143,8 @@ class Bot:
             if len(curie) > 100:
                 continue
             synonyms = (set(curie_synonyms[curie]) | {curie_name[curie]}) - {label} - {''}
-            self.create_item(label, curie_descr[curie], curie, login,
-                             synonyms=synonyms, type_of=curie_type[curie], force=force)
+            self.create_item(label, curie_descr[curie], curie, synonyms=synonyms,
+                             type_of=curie_type[curie], force=force)
 
     def create_edges(self):
         edges = self.edges
@@ -158,7 +158,7 @@ class Bot:
             if not ss:
                 continue
             item = self.item_engine(wd_item_id=subj, data=ss, domain="asdf")
-            wdi_helpers.try_write(item, rows.iloc[0][':START_ID'], self.dbxref_pid, login)
+            wdi_helpers.try_write(item, rows.iloc[0][':START_ID'], self.dbxref_pid, self.login)
 
     def create_subj_edges(self, rows):
         # input is a dataframe where all the subjects are the same
