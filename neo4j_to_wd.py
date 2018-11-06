@@ -1,4 +1,6 @@
 import os
+from itertools import chain
+
 import pandas as pd
 from tqdm import tqdm
 from wikidataintegrator import wdi_core, wdi_helpers, wdi_login
@@ -177,18 +179,26 @@ class Bot:
 
     # noinspection PyTypeChecker
     def create_statement_ref(self, rows):
+        """
+        Ref supporting text gets split up into chunks of 400 chars each.
+        if the ref url is from pubmed, it gets split. Otherwise it gets cropped to 400 chars
+        """
+
+        ref_url_pid = self.uri_pid['http://www.wikidata.org/entity/P854']
+        ref_supp_text_pid = self.uri_pid['http://reference_supporting_text']
         refs = []
         for _, row in rows.iterrows():
             rst = chunked(row.reference_supporting_text, 400)
             ref = [
-                wdi_core.WDString("".join(rst_chunk).strip(), self.uri_pid["http://reference_supporting_text"],
-                                  is_reference=True)
+                wdi_core.WDString("".join(rst_chunk).strip(), ref_supp_text_pid, is_reference=True)
                 for rst_chunk in rst]
-
-            ref.extend(
-                [wdi_core.WDUrl(ref_uri[:400], self.uri_pid['http://www.wikidata.org/entity/P854'], is_reference=True)
-                 for ref_uri in row.reference_uri.split("|")] if row.reference_uri else []
-            )
+            if row.reference_uri:
+                for ref_uri in row.reference_uri.split("|"):
+                    if ref_uri.startswith("https://www.ncbi.nlm.nih.gov/pubmed/"):
+                        ref.extend([wdi_core.WDUrl(this_url, ref_url_pid, is_reference=True)
+                                    for this_url in self.split_pubmed_url(ref_uri)])
+                    else:
+                        ref.append(wdi_core.WDUrl(ref_uri[:400], ref_url_pid, is_reference=True))
             refs.append(ref)
         return refs
 
@@ -208,6 +218,34 @@ class Bot:
         else:
             s = wdi_core.WDItemID(obj, pred)
         return s
+
+    @staticmethod
+    def split_pubmed_url(url):
+        base_url = "https://www.ncbi.nlm.nih.gov/pubmed/"
+        url = url.replace(base_url, "")
+        pmids = url.split(",")
+
+        urls = []
+        while pmids:
+            this_url = base_url
+            this_url += pmids.pop(0)
+            while pmids and (len(this_url) + len(pmids[0]) + 1 < 400):
+                this_url += ","
+                this_url += pmids.pop(0)
+            urls.append(this_url)
+
+        return urls
+
+    @staticmethod
+    def join_pubmed_url(urls):
+        base_url = "https://www.ncbi.nlm.nih.gov/pubmed/"
+        urls = [x.replace(base_url, "") for x in urls]
+        pmids = list(chain(*[x.split(",") for x in urls]))
+
+        url = base_url + ",".join(pmids)
+
+        return url
+
 
 
 if __name__ == '__main__':
