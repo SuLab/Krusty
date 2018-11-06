@@ -151,7 +151,7 @@ class Bot:
 
         subj_edges = edges.groupby(":START_ID")
 
-        # subj, rows = "UniProt:Q96IV0", edges[edges[':START_ID']=='UniProt:Q96IV0']
+        # subj, rows = "UniProt:Q96IV0", edges[edges[':START_ID']=='ClinVarVariant:50962']
         for subj, rows in tqdm(subj_edges, total=len(subj_edges)):
             subj = self.dbxref_qid.get(rows.iloc[0][':START_ID'])
             ss = self.create_subj_edges(rows)
@@ -181,12 +181,12 @@ class Bot:
         for _, row in rows.iterrows():
             rst = chunked(row.reference_supporting_text, 400)
             ref = [
-                wdi_core.WDString("".join(rst_chunk), self.uri_pid["http://reference_supporting_text"],
+                wdi_core.WDString("".join(rst_chunk).strip(), self.uri_pid["http://reference_supporting_text"],
                                   is_reference=True)
                 for rst_chunk in rst]
 
             ref.extend(
-                [wdi_core.WDUrl(ref_uri, self.uri_pid['http://www.wikidata.org/entity/P854'], is_reference=True)
+                [wdi_core.WDUrl(ref_uri[:400], self.uri_pid['http://www.wikidata.org/entity/P854'], is_reference=True)
                  for ref_uri in row.reference_uri.split("|")] if row.reference_uri else []
             )
             refs.append(ref)
