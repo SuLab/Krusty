@@ -194,6 +194,7 @@ class Bot:
                 for rst_chunk in rst]
             if row.reference_uri:
                 for ref_uri in row.reference_uri.split("|"):
+                    ref_uri = self.handle_special_ref_url(ref_uri)
                     if ref_uri.startswith("https://www.ncbi.nlm.nih.gov/pubmed/"):
                         ref.extend([wdi_core.WDUrl(this_url, ref_url_pid, is_reference=True)
                                     for this_url in self.split_pubmed_url(ref_uri)])
@@ -218,6 +219,13 @@ class Bot:
         else:
             s = wdi_core.WDItemID(obj, pred)
         return s
+
+    @staticmethod
+    def handle_special_ref_url(url):
+        if url.startswith("ISBN"):
+            isbn = url.replace("ISBN-13:", "").replace("ISBN-10", "")
+            url = "https://www.wikidata.org/wiki/Special:BookSources/{}".format(isbn)
+        return url
 
     @staticmethod
     def split_pubmed_url(url):
