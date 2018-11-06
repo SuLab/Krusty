@@ -2,7 +2,6 @@ import os
 import pandas as pd
 from tqdm import tqdm
 from wikidataintegrator import wdi_core, wdi_helpers, wdi_login
-from wikidataintegrator.wdi_helpers import try_write
 from more_itertools import chunked
 
 pd.options.display.width = 200
@@ -204,30 +203,34 @@ class Bot:
         # print(subj, pred, obj)
         if not (subj and pred and obj):
             return None
-
-        s = wdi_core.WDItemID(obj, pred)
+        if row[':TYPE'] == "skos:exactMatch":
+            s = wdi_core.WDString(obj, pred)
+        else:
+            s = wdi_core.WDItemID(obj, pred)
         return s
 
 
-edges = pd.read_csv("ngly1_statements.csv.gz", dtype=str)
-edges = edges.fillna("")
-edges = edges.replace('None', "")
-nodes = pd.read_csv("ngly1_concepts.csv.gz", dtype=str)
-nodes = nodes.fillna("")
-nodes = nodes.replace('None', "")
+if __name__ == '__main__':
+    edges = pd.read_csv("ngly1_statements.csv.gz", dtype=str)
+    edges = edges.fillna("")
+    edges = edges.replace('None', "")
+    nodes = pd.read_csv("ngly1_concepts.csv.gz", dtype=str)
+    nodes = nodes.fillna("")
+    nodes = nodes.replace('None', "")
 
-# handle nodes with no label
-blank = (nodes.preflabel == "") & (nodes.name == "")
-nodes.loc[blank, "preflabel"] = nodes.loc[blank, "id:ID"]
+    # handle nodes with no label
+    blank = (nodes.preflabel == "") & (nodes.name == "")
+    nodes.loc[blank, "preflabel"] = nodes.loc[blank, "id:ID"]
 
-# handle non-unique label/descr
-dupe = nodes.duplicated(subset=['preflabel'], keep=False)
-# append the ID to the label
-nodes.loc[dupe, "preflabel"] = nodes.loc[dupe, "preflabel"] + " (" + nodes.loc[dupe, "id:ID"] + ")"
+    # handle non-unique label/descr
+    dupe = nodes.duplicated(subset=['preflabel'], keep=False)
+    # append the ID to the label
+    nodes.loc[dupe, "preflabel"] = nodes.loc[dupe, "preflabel"] + " (" + nodes.loc[dupe, "id:ID"] + ")"
 
-login = wdi_login.WDLogin(user=WDUSER, pwd=WDPASS, mediawiki_api_url=mediawiki_api_url)
-bot = Bot(nodes, edges, login)
+    login = wdi_login.WDLogin(user=WDUSER, pwd=WDPASS, mediawiki_api_url=mediawiki_api_url)
+    bot = Bot(nodes, edges, login)
 
-bot.create_properties()
-bot.create_classes()
-# s.create_nodes()
+    bot.create_properties()
+    bot.create_classes()
+    bot.create_nodes()
+    bot.create_edges()
