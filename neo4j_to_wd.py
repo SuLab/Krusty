@@ -70,6 +70,8 @@ class Bot:
         self.create_property("exact match", "", "string", curie_uri["skos:exactMatch"], "skos:exactMatch")
         self.create_property("reference uri", "", "url", "http://www.wikidata.org/entity/P854", "reference_uri")
         self.create_property("reference supporting text", "", "string", "http://reference_supporting_text", "ref_supp_text")
+        self.create_property("External ID", "generic property for holding a (generally CURIE-fied) external ID",
+                             "string", "http://www.geneontology.org/formats/oboInOwl#DbXref", "oboInOwl:DbXref")
 
     def create_property(self, label, description, property_datatype, uri, dbxref):
         if uri in self.uri_pid:
