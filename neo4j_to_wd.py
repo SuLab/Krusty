@@ -29,8 +29,6 @@ sparql_endpoint_url = "http://{}:{}/proxy/wdqs/bigdata/namespace/wdq/sparql".for
 
 class Bot:
     equiv_prop_pid = None  # http://www.w3.org/2002/07/owl#equivalentProperty
-    equiv_class_pid = None  # http://www.w3.org/2002/07/owl#equivalentClass
-    dbxref_pid = None  # http://www.geneontology.org/formats/oboInOwl#DbXref
 
     def __init__(self, nodes, edges, login, write=True, run_one=False):
         self.nodes = nodes
@@ -41,7 +39,7 @@ class Bot:
 
         self.item_engine = wdi_core.WDItemEngine.wikibase_item_engine_factory(mediawiki_api_url=mediawiki_api_url,
                                                                               sparql_endpoint_url=sparql_endpoint_url)
-
+        self.get_equiv_prop_pid()
         self.uri_pid = wdi_helpers.id_mapper(self.get_equiv_prop_pid(), endpoint=sparql_endpoint_url)
         self.dbxref_pid = self.uri_pid['http://www.geneontology.org/formats/oboInOwl#DbXref']
         self.dbxref_qid = wdi_helpers.id_mapper(self.dbxref_pid, endpoint=sparql_endpoint_url)
@@ -67,19 +65,19 @@ class Bot:
         # all edges will be an item except for skos:exactMatch
         del curie_label['skos:exactMatch']
         for curie, label in curie_label.items():
-            self.create_property(label, "", "wikibase-item", curie_uri[curie])
+            self.create_property(label, "", "wikibase-item", curie_uri[curie], curie)
 
-        self.create_property("exact match", "", "string", curie_uri["skos:exactMatch"])
-        self.create_property("stated in", "", "wikibase-item", "http://www.wikidata.org/entity/P248")
-        self.create_property("reference uri", "", "url", "http://www.wikidata.org/entity/P854")
-        self.create_property("reference supporting text", "", "string", "http://reference_supporting_text")
+        self.create_property("exact match", "", "string", curie_uri["skos:exactMatch"], "skos:exactMatch")
+        self.create_property("reference uri", "", "url", "http://www.wikidata.org/entity/P854", "reference_uri")
+        self.create_property("reference supporting text", "", "string", "http://reference_supporting_text", "ref_supp_text")
 
-    def create_property(self, label, description, property_datatype, uri):
+    def create_property(self, label, description, property_datatype, uri, dbxref):
         if uri in self.uri_pid:
             print("property already exists: {} {}".format(self.uri_pid[uri], uri))
             return None
         s = [wdi_core.WDUrl(uri, self.get_equiv_prop_pid())]
-        item = self.item_engine(item_name=label, domain="foo", data=s, core_props=[self.dbxref_pid])
+        s.append(wdi_core.WDString(dbxref, self.dbxref_pid))
+        item = self.item_engine(item_name=label, domain="foo", data=s, core_props=[self.equiv_prop_pid])
         item.set_label(label)
         item.set_description(description)
         item.write(self.login, entity_type="property", property_datatype=property_datatype)
@@ -103,9 +101,10 @@ class Bot:
         item.write(self.login)
         self.dbxref_qid[ext_id] = item.wd_item_id
 
-    def get_equiv_prop_pid(self):
-        if self.equiv_prop_pid:
-            return self.equiv_prop_pid
+    @classmethod
+    def get_equiv_prop_pid(cls):
+        if cls.equiv_prop_pid:
+            return cls.equiv_prop_pid
         # get the equivalent property property without knowing the PID for equivalent property!!!
         query = '''SELECT * WHERE {
           ?item ?prop <http://www.w3.org/2002/07/owl#equivalentProperty> .
@@ -114,15 +113,8 @@ class Bot:
         pid = wdi_core.WDItemEngine.execute_sparql_query(query, endpoint=sparql_endpoint_url)
         pid = pid['results']['bindings'][0]['prop']['value']
         pid = pid.split("/")[-1]
-        self.equiv_prop_pid = pid
-        return pid
-
-    def get_equiv_class_pid(self):
-        if self.equiv_class_pid:
-            return self.equiv_class_pid
-        d = wdi_helpers.id_mapper(self.get_equiv_prop_pid())
-        self.equiv_class_pid = d['http://www.w3.org/2002/07/owl#equivalentClass']
-        return self.equiv_class_pid
+        cls.equiv_prop_pid = pid
+        return cls.equiv_prop_pid
 
     def create_classes(self):
         # from the nodes file, get the "type", which neo4j calls ":LABEL" for some strange reason
