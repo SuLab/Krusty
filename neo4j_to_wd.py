@@ -5,6 +5,8 @@ import pandas as pd
 from tqdm import tqdm
 from wikidataintegrator import wdi_core, wdi_helpers, wdi_login
 from more_itertools import chunked
+import textwrap
+
 
 pd.options.display.width = 200
 pd.set_option("display.max_column", 12)
@@ -188,10 +190,9 @@ class Bot:
         ref_supp_text_pid = self.uri_pid['http://reference_supporting_text']
         refs = []
         for _, row in rows.iterrows():
-            rst = chunked(row.reference_supporting_text, 400)
-            ref = [
-                wdi_core.WDString("".join(rst_chunk).strip(), ref_supp_text_pid, is_reference=True)
-                for rst_chunk in rst]
+            # textwrap.wrap splits lines on spaces only
+            lines = textwrap.wrap(row.reference_supporting_text, 400, break_long_words=False)
+            ref = [wdi_core.WDString(rst_chunk, ref_supp_text_pid, is_reference=True) for rst_chunk in lines]
             if row.reference_uri:
                 for ref_uri in row.reference_uri.split("|"):
                     ref_uri = self.handle_special_ref_url(ref_uri)
