@@ -10,7 +10,6 @@ then load it in robot or rdflib
 import pandas as pd
 from tqdm import tqdm
 from wikidataintegrator import wdi_core, wdi_helpers
-from more_itertools import chunked
 
 pd.options.display.width = 200
 pd.set_option("display.max_column", 12)
@@ -40,14 +39,17 @@ items = []
 qids = {x for x in qid_dbxref if x.startswith("Q")}
 """
 # take too much ram
+from more_itertools import chunked
 for chunk in tqdm(chunked(qids, 50), total=len(qids) / 50):
     items.extend(wdi_core.WDItemEngine.generate_item_instances(list(chunk), mediawiki_api_url))
 """
-### edges
 edge_columns = [':START_ID', ':TYPE', ':END_ID', 'reference_uri', 'reference_supporting_text',
                 'reference_date', 'property_label', 'property_description:IGNORE', 'property_uri']
 edge_template = {x: "NA" for x in edge_columns}
-lines = []
+node_columns = ['id:ID', ':LABEL', 'preflabel', 'synonyms:IGNORE', 'name', 'description']
+
+edge_lines = []
+node_lines = []
 for sub_qid in tqdm(qids):
     # sub_qid = "Q1513"
     item = wdi_core.WDItemEngine(wd_item_id=sub_qid, mediawiki_api_url=mediawiki_api_url)
@@ -72,29 +74,26 @@ for sub_qid in tqdm(qids):
                 # todo: rejoin split pubmed urls
                 line['reference_supporting_text'] = ref_supp_text
                 line['reference_uri'] = reference_uri
-                lines.append(line.copy())
+                edge_lines.append(line.copy())
         else:
-            lines.append(line.copy())
+            edge_lines.append(line.copy())
 
-df_edges = pd.DataFrame(lines)
-df_edges = df_edges[edge_columns]
-df_edges.to_csv("edges.csv")
-
-### nodes
-node_columns = ['id:ID', ':LABEL', 'preflabel', 'synonyms:IGNORE', 'name', 'description']
-lines = []
-for qid, item in tqdm(items):
     type_statements = [s for s in item.statements if s.get_prop_nr() == instance_of_pid]
     if len(type_statements) != 1:
         continue
     node_template = dict()
     node_template[':LABEL'] = qid_dbxref["Q" + str(type_statements[0].get_value())]
-    node_template['id:ID'] = qid_dbxref[qid]
+    node_template['id:ID'] = qid_dbxref[sub_qid]
     node_template['preflabel'] = item.get_label()
     node_template['name'] = item.get_label()
     node_template['description'] = item.get_description()
     node_template['synonyms:IGNORE'] = "|".join(item.get_aliases())
-    lines.append(node_template.copy())
-df_nodes = pd.DataFrame(lines)
+    node_lines.append(node_template.copy())
+
+df_edges = pd.DataFrame(edge_lines)
+df_edges = df_edges[edge_columns]
+df_edges.to_csv("edges.csv", index=None)
+
+df_nodes = pd.DataFrame(node_lines)
 df_nodes = df_nodes[node_columns]
-df_nodes.to_csv("nodes.csv")
+df_nodes.to_csv("nodes.csv", index=None)
