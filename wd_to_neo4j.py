@@ -38,16 +38,19 @@ pid_label = {pid: item.get_label() for pid, item in props}
 # get all items and all statements
 items = []
 qids = {x for x in qid_dbxref if x.startswith("Q")}
+"""
+# take too much ram
 for chunk in tqdm(chunked(qids, 50), total=len(qids) / 50):
     items.extend(wdi_core.WDItemEngine.generate_item_instances(list(chunk), mediawiki_api_url))
-
+"""
 ### edges
 edge_columns = [':START_ID', ':TYPE', ':END_ID', 'reference_uri', 'reference_supporting_text',
                 'reference_date', 'property_label', 'property_description:IGNORE', 'property_uri']
 edge_template = {x: "NA" for x in edge_columns}
 lines = []
-for sub_qid, item in tqdm(items):
+for sub_qid in tqdm(qids):
     # sub_qid = "Q1513"
+    item = wdi_core.WDItemEngine(wd_item_id=sub_qid, mediawiki_api_url=mediawiki_api_url)
     edge_template[':START_ID'] = qid_dbxref[sub_qid]
 
     for s in item.statements:
@@ -75,6 +78,7 @@ for sub_qid, item in tqdm(items):
 
 df_edges = pd.DataFrame(lines)
 df_edges = df_edges[edge_columns]
+df_edges.to_csv("edges.csv")
 
 ### nodes
 node_columns = ['id:ID', ':LABEL', 'preflabel', 'synonyms:IGNORE', 'name', 'description']
@@ -93,3 +97,4 @@ for qid, item in tqdm(items):
     lines.append(node_template.copy())
 df_nodes = pd.DataFrame(lines)
 df_nodes = df_nodes[node_columns]
+df_nodes.to_csv("nodes.csv")
