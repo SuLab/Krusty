@@ -1,41 +1,26 @@
-import os
 from itertools import chain
+import configargparse
 
 import pandas as pd
 from tqdm import tqdm
 from wikidataintegrator import wdi_core, wdi_helpers, wdi_login
-from more_itertools import chunked
 import textwrap
-
-
-pd.options.display.width = 200
-pd.set_option("display.max_column", 12)
-
-try:
-    from local import WDUSER, WDPASS
-except ImportError:
-    if "WDUSER" in os.environ and "WDPASS" in os.environ:
-        WDUSER = os.environ['WDUSER']
-        WDPASS = os.environ['WDPASS']
-    else:
-        raise ValueError("WDUSER and WDPASS must be specified in local.py or as environment variables")
-
-HOST = "100.25.145.12"
-WIKIBASE_PORT = "8181"
-WDQS_PORT = "8282"
-mediawiki_api_url = "http://{}:{}/w/api.php".format(HOST, WIKIBASE_PORT)
-sparql_endpoint_url = "http://{}:{}/proxy/wdqs/bigdata/namespace/wdq/sparql".format(HOST, WDQS_PORT)
 
 
 class Bot:
     equiv_prop_pid = None  # http://www.w3.org/2002/07/owl#equivalentProperty
 
-    def __init__(self, nodes, edges, login, write=True, run_one=False):
-        self.nodes = nodes
-        self.edges = edges
+    def __init__(self, node_path, edge_path, mediawiki_api_url, sparql_endpoint_url,
+                 login, simulate=False):
+        self.node_path = node_path
+        self.edge_path = edge_path
+        self.nodes = None
+        self.edges = None
+        self.parse_nodes_edges()
         self.login = login
-        self.write = write
-        self.run_one = run_one
+        self.write = not simulate
+        self.mediawiki_api_url = mediawiki_api_url
+        self.sparql_endpoint_url = sparql_endpoint_url
 
         self.item_engine = wdi_core.WDItemEngine.wikibase_item_engine_factory(mediawiki_api_url=mediawiki_api_url,
                                                                               sparql_endpoint_url=sparql_endpoint_url)
@@ -47,6 +32,8 @@ class Bot:
     def run(self):
         self.create_properties()
         self.create_classes()
+        self.create_nodes()
+        self.create_edges()
 
     def create_properties(self):
         # Reads the neo4j edges file to determine properties it needs to create
@@ -69,7 +56,8 @@ class Bot:
 
         self.create_property("exact match", "", "string", curie_uri["skos:exactMatch"], "skos:exactMatch")
         self.create_property("reference uri", "", "url", "http://www.wikidata.org/entity/P854", "reference_uri")
-        self.create_property("reference supporting text", "", "string", "http://reference_supporting_text", "ref_supp_text")
+        self.create_property("reference supporting text", "", "string", "http://reference_supporting_text",
+                             "ref_supp_text")
         self.create_property("External ID", "generic property for holding a (generally CURIE-fied) external ID",
                              "string", "http://www.geneontology.org/formats/oboInOwl#DbXref", "oboInOwl:DbXref")
 
@@ -82,7 +70,8 @@ class Bot:
         item = self.item_engine(item_name=label, domain="foo", data=s, core_props=[self.equiv_prop_pid])
         item.set_label(label)
         item.set_description(description)
-        item.write(self.login, entity_type="property", property_datatype=property_datatype)
+        if self.write:
+            item.write(self.login, entity_type="property", property_datatype=property_datatype)
         self.uri_pid[uri] = item.wd_item_id
 
     def create_item(self, label, description, ext_id, synonyms=None, type_of=None, force=False):
@@ -100,23 +89,23 @@ class Bot:
             item.set_description(description)
         if synonyms:
             item.set_aliases(synonyms)
-        item.write(self.login)
+        if self.write:
+            item.write(self.login)
         self.dbxref_qid[ext_id] = item.wd_item_id
 
-    @classmethod
-    def get_equiv_prop_pid(cls):
-        if cls.equiv_prop_pid:
-            return cls.equiv_prop_pid
+    def get_equiv_prop_pid(self):
+        if self.equiv_prop_pid:
+            return self.equiv_prop_pid
         # get the equivalent property property without knowing the PID for equivalent property!!!
         query = '''SELECT * WHERE {
           ?item ?prop <http://www.w3.org/2002/07/owl#equivalentProperty> .
           ?item <http://wikiba.se/ontology#directClaim> ?prop .
         }'''
-        pid = wdi_core.WDItemEngine.execute_sparql_query(query, endpoint=sparql_endpoint_url)
+        pid = wdi_core.WDItemEngine.execute_sparql_query(query, endpoint=self.sparql_endpoint_url)
         pid = pid['results']['bindings'][0]['prop']['value']
         pid = pid.split("/")[-1]
-        cls.equiv_prop_pid = pid
-        return cls.equiv_prop_pid
+        self.equiv_prop_pid = pid
+        return self.equiv_prop_pid
 
     def create_classes(self):
         # from the nodes file, get the "type", which neo4j calls ":LABEL" for some strange reason
@@ -156,7 +145,7 @@ class Bot:
             if not ss:
                 continue
             item = self.item_engine(wd_item_id=subj, data=ss, domain="asdf")
-            wdi_helpers.try_write(item, rows.iloc[0][':START_ID'], self.dbxref_pid, self.login)
+            wdi_helpers.try_write(item, rows.iloc[0][':START_ID'], self.dbxref_pid, self.login, write=self.write)
 
     def create_subj_edges(self, rows):
         # input is a dataframe where all the subjects are the same
@@ -249,29 +238,44 @@ class Bot:
 
         return url
 
+    def parse_nodes_edges(self):
+        node_path, edge_path = self.node_path, self.edge_path
+        edges = pd.read_csv(edge_path, dtype=str)
+        edges = edges.fillna("")
+        edges = edges.replace('None', "")
+        nodes = pd.read_csv(node_path, dtype=str)
+        nodes = nodes.fillna("")
+        nodes = nodes.replace('None', "")
+
+        # handle nodes with no label
+        blank = (nodes.preflabel == "") & (nodes.name == "")
+        nodes.loc[blank, "preflabel"] = nodes.loc[blank, "id:ID"]
+
+        # handle non-unique labels
+        dupe = nodes.duplicated(subset=['preflabel'], keep=False)
+        # append the ID to the label
+        nodes.loc[dupe, "preflabel"] = nodes.loc[dupe, "preflabel"] + " (" + nodes.loc[dupe, "id:ID"] + ")"
+
+        self.nodes, self.edges = nodes, edges
+
+
+def main(user, password, mediawiki_api_url, sparql_endpoint_url, node_path, edge_path, simulate=False):
+    login = wdi_login.WDLogin(user=user, pwd=password, mediawiki_api_url=mediawiki_api_url)
+    bot = Bot(node_path, edge_path, mediawiki_api_url, sparql_endpoint_url, login, simulate=simulate)
+    bot.run()
 
 
 if __name__ == '__main__':
-    edges = pd.read_csv("ngly1_statements.csv.gz", dtype=str)
-    edges = edges.fillna("")
-    edges = edges.replace('None', "")
-    nodes = pd.read_csv("ngly1_concepts.csv.gz", dtype=str)
-    nodes = nodes.fillna("")
-    nodes = nodes.replace('None', "")
-
-    # handle nodes with no label
-    blank = (nodes.preflabel == "") & (nodes.name == "")
-    nodes.loc[blank, "preflabel"] = nodes.loc[blank, "id:ID"]
-
-    # handle non-unique label/descr
-    dupe = nodes.duplicated(subset=['preflabel'], keep=False)
-    # append the ID to the label
-    nodes.loc[dupe, "preflabel"] = nodes.loc[dupe, "preflabel"] + " (" + nodes.loc[dupe, "id:ID"] + ")"
-
-    login = wdi_login.WDLogin(user=WDUSER, pwd=WDPASS, mediawiki_api_url=mediawiki_api_url)
-    bot = Bot(nodes, edges, login)
-
-    bot.create_properties()
-    bot.create_classes()
-    bot.create_nodes()
-    bot.create_edges()
+    p = configargparse.ArgParser(default_config_files=['config.cfg'])
+    p.add('-c', '--config', is_config_file=True, help='config file path')
+    p.add("--user", required=True, help="Wikibase username")
+    p.add("--password", required=True, help="Wikibase password")
+    p.add("--mediawiki_api_url", required=True, help="Wikibase mediawiki api url")
+    p.add("--sparql_endpoint_url", required=True, help="Wikibase sparql endpoint url")
+    p.add("--node-path", required=True, help="path to neo4j nodes csv dump")
+    p.add("--edge-path", required=True, help="path to neo4j edges csv dump")
+    p.add("--simulate", action='store_true', help="don't actually perform writes to Wikibase")
+    options, _ = p.parse_known_args()
+    d = options.__dict__.copy()
+    del d['config']
+    main(**d)
