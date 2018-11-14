@@ -33,7 +33,7 @@ class Bot:
 
         # get all items and all statements
         qids = {x for x in self.qid_dbxref if x.startswith("Q")}
-        self.item_iter = self.item_chunker(list(qids)[:100])
+        self.item_iter = self.item_chunker(sorted(list(qids)))
 
         self.edge_lines = []
         self.node_lines = []
