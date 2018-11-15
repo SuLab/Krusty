@@ -39,8 +39,8 @@ class Bot:
         self.node_lines = []
 
     def item_chunker(self, qids) -> wdi_core.WDItemEngine:
-        # iterate through item instances, getting 50 at a time
-        chunks = chunked(qids, 50)
+        # iterate through item instances, getting 20 at a time
+        chunks = chunked(qids, 20)
         for chunk in chunks:
             items = wdi_core.WDItemEngine.generate_item_instances(chunk, mediawiki_api_url=self.mediawiki_api_url)
             for item in items:
