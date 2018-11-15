@@ -1,3 +1,10 @@
+#### Wikibase Setup
+- Follow instructions here: https://github.com/wmde/wikibase-docker/blob/master/README-compose.md
+- Create a bot account in your wikibase (do it manually, or see [this](https://github.com/stuppie/wikibase-tools/blob/b0ba76f33f80c12da9ce51a1d2bcadbb4899033a/wikibase_tools/run.sh#L22))
+- Change settings in config.cfg
+- Run [this](https://github.com/stuppie/wikibase-tools/blob/master/wikibase_tools/initial_setup.py) to create an 'equivalent property' and 'equivalent class' property in the Wikibase, or make sure these properties have the appropriate URIs (`http://www.w3.org/2002/07/owl#equivalentProperty` and `http://www.w3.org/2002/07/owl#equivalentClass`).
+- Increase label, description, alias string length limit (see Wikibase Setup Notes below)
+
 
 ### Neo4j to Wikidata Bot: neo4j_to_wd.py
 
@@ -30,7 +37,6 @@ Expects the following column names:
 - "property_uri": property uri. added as equivalent property statement
 
 #### Notes
-- First run [this](https://github.com/stuppie/wikibase-tools/blob/master/wikibase_tools/initial_setup.py) to create an 'equivalent property' and 'equivalent class' property in the Wikibase, or make sure these properties have the appropriate URIs.
 - Multiple rows in the edges file that consist of identical (start_id, property, end_id) will
 be used to generate multiple references on the same statement.
 - Multiple reference_uris within the same row will result in multiple reference urls on one reference.
@@ -44,7 +50,8 @@ url is not a URL (besides those isbns), it will fail.
 
 To increase label, description, alias string length limit
 ```
-docker exec -it wikibase_wikibase_1 /bin/bash
+ID=$(docker-compose ps -q wikibase)
+docker exec -it $ID /bin/bash
 nano /var/www/html/extensions/Wikibase/repo/config/Wikibase.default.php
 # change the following line from 250 to whatever you want
 # 'multilang-limits' => ['length' => 250],
