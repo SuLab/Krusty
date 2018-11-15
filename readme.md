@@ -30,6 +30,7 @@ Expects the following column names:
 - "property_uri": property uri. added as equivalent property statement
 
 #### Notes
+- First run [this](https://github.com/stuppie/wikibase-tools/blob/master/wikibase_tools/initial_setup.py) to create an 'equivalent property' and 'equivalent class' property in the Wikibase, or make sure these properties have the appropriate URIs.
 - Multiple rows in the edges file that consist of identical (start_id, property, end_id) will
 be used to generate multiple references on the same statement.
 - Multiple reference_uris within the same row will result in multiple reference urls on one reference.
