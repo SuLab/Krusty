@@ -1,3 +1,4 @@
+from datetime import datetime
 from itertools import chain
 import configargparse
 
@@ -21,13 +22,42 @@ class Bot:
         self.write = not simulate
         self.mediawiki_api_url = mediawiki_api_url
         self.sparql_endpoint_url = sparql_endpoint_url
+        self.dbxref_pid = None
 
         self.item_engine = wdi_core.WDItemEngine.wikibase_item_engine_factory(mediawiki_api_url=mediawiki_api_url,
                                                                               sparql_endpoint_url=sparql_endpoint_url)
         self.get_equiv_prop_pid()
         self.uri_pid = wdi_helpers.id_mapper(self.get_equiv_prop_pid(), endpoint=sparql_endpoint_url)
+
+        ####
+        # these lines have to be done in this order because we need dbxref first before the others can be created
+        now = datetime.utcnow().replace(microsecond=0)
+        dbxref_pid, created = self.create_dbxref_prop()
         self.dbxref_pid = self.uri_pid['http://www.geneontology.org/formats/oboInOwl#DbXref']
+        self.create_initial_props()
+        # this fails on first run because the sparql endpoint has not yet been updated. so we need to wait
+        if created:
+            wdi_helpers.wait_for_last_modified(now, entity="http://wikibase.svc", delay=20,
+                                               endpoint=sparql_endpoint_url)
         self.dbxref_qid = wdi_helpers.id_mapper(self.dbxref_pid, endpoint=sparql_endpoint_url)
+
+        ####
+
+    def create_dbxref_prop(self):
+        # dbxref is special because other props use it
+        dbxref_pid, created = self.create_property("External ID",
+                                                   "generic property for holding a (generally CURIE-fied) external ID",
+                                                   "string", "http://www.geneontology.org/formats/oboInOwl#DbXref",
+                                                   "oboInOwl:DbXref")
+        return dbxref_pid, created
+
+    def create_initial_props(self):
+        # properties we need regardless of whats in the edges file
+        self.create_property("exact match", "", "string", "http://www.w3.org/2004/02/skos/core#exactMatch",
+                             "skos:exactMatch")
+        self.create_property("reference uri", "", "url", "http://www.wikidata.org/entity/P854", "reference_uri")
+        self.create_property("reference supporting text", "", "string", "http://reference_supporting_text",
+                             "ref_supp_text")
 
     def run(self):
         self.create_properties()
@@ -54,25 +84,21 @@ class Bot:
         for curie, label in curie_label.items():
             self.create_property(label, "", "wikibase-item", curie_uri[curie], curie)
 
-        self.create_property("exact match", "", "string", curie_uri["skos:exactMatch"], "skos:exactMatch")
-        self.create_property("reference uri", "", "url", "http://www.wikidata.org/entity/P854", "reference_uri")
-        self.create_property("reference supporting text", "", "string", "http://reference_supporting_text",
-                             "ref_supp_text")
-        self.create_property("External ID", "generic property for holding a (generally CURIE-fied) external ID",
-                             "string", "http://www.geneontology.org/formats/oboInOwl#DbXref", "oboInOwl:DbXref")
-
     def create_property(self, label, description, property_datatype, uri, dbxref):
+        # returns tuple (property PID: str, created: bool)
         if uri in self.uri_pid:
             print("property already exists: {} {}".format(self.uri_pid[uri], uri))
-            return None
+            return (self.uri_pid[uri], False)
         s = [wdi_core.WDUrl(uri, self.get_equiv_prop_pid())]
-        s.append(wdi_core.WDString(dbxref, self.dbxref_pid))
+        if self.dbxref_pid:
+            s.append(wdi_core.WDString(dbxref, self.dbxref_pid))
         item = self.item_engine(item_name=label, domain="foo", data=s, core_props=[self.equiv_prop_pid])
         item.set_label(label)
         item.set_description(description)
         if self.write:
             item.write(self.login, entity_type="property", property_datatype=property_datatype)
         self.uri_pid[uri] = item.wd_item_id
+        return (self.uri_pid[uri], True)
 
     def create_item(self, label, description, ext_id, synonyms=None, type_of=None, force=False):
         if (not force) and ext_id in self.dbxref_qid:
