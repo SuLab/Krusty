@@ -53,12 +53,20 @@ class Bot:
         node_template = dict()
         node_template[':LABEL'] = self.qid_dbxref["Q" + str(type_statements[0].get_value())]
         node_template['id:ID'] = self.qid_dbxref[item.wd_item_id]
-        node_template['preflabel'] = item.get_label()
+        node_template['preflabel'] = self.undo_id_parenthesis(item.get_label())
         node_template['name'] = item.get_label()
         node_template['description'] = item.get_description()
         node_template['synonyms:IGNORE'] = "|".join(item.get_aliases())
 
         return node_template
+
+    @staticmethod
+    def undo_id_parenthesis(s):
+        # example "N-Acetyl-D-glucosamine (CHEBI:17411)" -> "N-Acetyl-D-glucosamine"
+        if " (" in s and s.endswith(")"):
+            idx1 = s.rindex(" (")
+            s = s[:idx1]
+        return s
 
     def write_out(self):
         df_edges = pd.DataFrame(self.edge_lines)
