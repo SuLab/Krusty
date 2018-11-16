@@ -53,7 +53,9 @@ class Bot:
 
     def create_initial_props(self):
         # properties we need regardless of whats in the edges file
-        self.create_property("exact match", "", "string", "http://www.w3.org/2004/02/skos/core#exactMatch",
+        self.create_property("exact match", "v1", "string", "http://www.w3.org/2004/02/skos/core#exactMatch",
+                             "skos:exactMatch")
+        self.create_property("exact match", "v2", "string", "http://www.w3.org/2004/02/skos/core#skos_exactMatch",
                              "skos:exactMatch")
         self.create_property("reference uri", "", "url", "http://www.wikidata.org/entity/P854", "reference_uri")
         self.create_property("reference supporting text", "", "string", "http://reference_supporting_text",
@@ -80,7 +82,8 @@ class Bot:
         # curie_uri['skos:exactMatch'] = "http://www.w3.org/2004/02/skos/core#exactMatch"
 
         # all edges will be an item except for skos:exactMatch
-        del curie_label['skos:exactMatch']
+        if 'skos:exactMatch' in curie_label:
+            del curie_label['skos:exactMatch']
         for curie, label in curie_label.items():
             self.create_property(label, "", "wikibase-item", curie_uri[curie], curie)
 
