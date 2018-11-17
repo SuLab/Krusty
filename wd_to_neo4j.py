@@ -23,7 +23,7 @@ class Bot:
         self.qid_dbxref = {v: k for k, v in dbxref_qid.items()}
         self.ref_supp_text_pid = uri_pid["http://reference_supporting_text"]
         self.reference_uri_pid = uri_pid["http://www.wikidata.org/entity/P854"]
-        self.instance_of_pid = uri_pid["http://www.w3.org/1999/02/22-rdf-syntax-ns#rdf_type"]
+        self.type_pid = uri_pid["http://type"]
 
         # prop label and descriptions
         pids = {x for x in self.qid_dbxref if x.startswith("P")}
@@ -48,7 +48,7 @@ class Bot:
                 yield item[1]
 
     def parse_node(self, item: wdi_core.WDItemEngine):
-        type_statements = [s for s in item.statements if s.get_prop_nr() == self.instance_of_pid]
+        type_statements = [s for s in item.statements if s.get_prop_nr() == self.type_pid]
         if len(type_statements) != 1:
             return None
         node_template = dict()
@@ -81,7 +81,10 @@ class Bot:
 
     def handle_statement(self, s, start_id):
         # if a statement has multiple refs, it will return multiple lines
-        skip_statements = {"http://www.geneontology.org/formats/oboInOwl#DbXref"}
+        skip_statements = {
+            "http://www.geneontology.org/formats/oboInOwl#DbXref",
+            "http://type"
+        }
         edge_lines = []
         line = {":START_ID": start_id, 'property_uri': self.pid_uri[s.get_prop_nr()]}
         if line['property_uri'] in skip_statements:
