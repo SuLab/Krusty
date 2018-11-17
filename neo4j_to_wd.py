@@ -60,11 +60,13 @@ class Bot:
         self.create_property("reference uri", "", "url", "http://www.wikidata.org/entity/P854", "reference_uri")
         self.create_property("reference supporting text", "", "string", "http://reference_supporting_text",
                              "ref_supp_text")
+        # this is to be used for the neo4j type, which it calls ":LABEL"
+        self.create_property("type", "the neo4j type, aka ':LABEL'", "wikibase-item", "http://type", "type")
 
-    def run(self):
+    def run(self, force=False):
         self.create_properties()
         self.create_classes()
-        self.create_nodes()
+        self.create_nodes(force=force)
         self.create_edges()
 
     def create_properties(self):
@@ -109,8 +111,7 @@ class Bot:
             return None
         s = [wdi_core.WDString(ext_id, self.dbxref_pid)]
         if type_of:
-            s.append(wdi_core.WDItemID(self.dbxref_qid[type_of],
-                                       self.uri_pid['http://www.w3.org/1999/02/22-rdf-syntax-ns#rdf_type']))
+            s.append(wdi_core.WDItemID(self.dbxref_qid[type_of], self.uri_pid['http://type']))
 
         item = self.item_engine(item_name=label, domain="foo", data=s, core_props=[self.dbxref_pid])
         item.set_label(label)
@@ -276,6 +277,12 @@ class Bot:
         nodes = nodes.fillna("")
         nodes = nodes.replace('None', "")
 
+        """
+        edges = edges[edges[':TYPE'] == "rdf:type"]
+        s = set(edges[':START_ID'])
+        nodes = nodes[nodes['id:ID'].isin(s)]
+        """
+
         # handle nodes with no label
         blank = (nodes.preflabel == "") & (nodes.name == "")
         nodes.loc[blank, "preflabel"] = nodes.loc[blank, "id:ID"]
@@ -291,7 +298,7 @@ class Bot:
 def main(user, password, mediawiki_api_url, sparql_endpoint_url, node_path, edge_path, simulate=False):
     login = wdi_login.WDLogin(user=user, pwd=password, mediawiki_api_url=mediawiki_api_url)
     bot = Bot(node_path, edge_path, mediawiki_api_url, sparql_endpoint_url, login, simulate=simulate)
-    bot.run()
+    bot.run(force=False)
 
 
 if __name__ == '__main__':

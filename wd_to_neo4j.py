@@ -34,6 +34,7 @@ class Bot:
         # get all items and all statements
         qids = {x for x in self.qid_dbxref if x.startswith("Q")}
         self.item_iter = self.item_chunker(sorted(list(qids)))
+        # self.item_iter = self.item_chunker(['Q94', "Q347"])
 
         self.edge_lines = []
         self.node_lines = []
@@ -80,8 +81,7 @@ class Bot:
 
     def handle_statement(self, s, start_id):
         # if a statement has multiple refs, it will return multiple lines
-        skip_statements = {"http://www.w3.org/1999/02/22-rdf-syntax-ns#rdf_type",
-                           "http://www.geneontology.org/formats/oboInOwl#DbXref"}
+        skip_statements = {"http://www.geneontology.org/formats/oboInOwl#DbXref"}
         edge_lines = []
         line = {":START_ID": start_id, 'property_uri': self.pid_uri[s.get_prop_nr()]}
         if line['property_uri'] in skip_statements:
