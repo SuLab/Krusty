@@ -70,14 +70,22 @@ class Bot:
         return s
 
     def write_out(self):
+        for line in self.edge_lines:
+          for key, value in line.items():
+            if type(value) is str and value == '':
+              line[key] = None
         df_edges = pd.DataFrame(self.edge_lines)
         df_edges['reference_date'] = None
         df_edges = df_edges[self.edge_columns]
-        df_edges.to_csv(self.edge_out_path, index=None)
+        df_edges.fillna('NA').to_csv(self.edge_out_path, index=None)
 
+        for line in self.node_lines:
+          for key, value in line.items():
+            if type(value) is str and value == '':
+              line[key] = None
         df_nodes = pd.DataFrame(self.node_lines)
         df_nodes = df_nodes[self.node_columns]
-        df_nodes.to_csv(self.node_out_path, index=None)
+        df_nodes.fillna('NA').to_csv(self.node_out_path, index=None)
 
     def handle_statement(self, s, start_id):
         # if a statement has multiple refs, it will return multiple lines
