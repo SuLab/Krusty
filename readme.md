@@ -1,10 +1,23 @@
+# Krusty
+Krusty is a library to synchronize the [NGLY1 Deficiency Knowledge Graph](https://github.com/NuriaQueralt/ngly1-graph) in the **Knowledge Navigation** (Neo4j) and **Knowledge Contribution** (Wikibase) components.
+
+##### Prerequisites
+* Set up a Neo4j server
+* Set up a Wikibase instance
+
+
+#### Data
+We used the NGLY1 Deficiency Knowledge Graph v3.2: [csv neo4j format network](https://github.com/NuriaQueralt/ngly1-graph/tree/master/neo4j-graphs/ngly1-v3.2/import/ngly1)
+
+#### Neo4j Setup
+We setup a Neo4j Community Server 3.5: [Neo4j Server Download](https://neo4j.com/download-center/)
+
 #### Wikibase Setup
 - Follow instructions here: https://github.com/wmde/wikibase-docker/blob/master/README-compose.md
 - Create a bot account in your wikibase (do it manually, or see [this](https://github.com/stuppie/wikibase-tools/blob/b0ba76f33f80c12da9ce51a1d2bcadbb4899033a/wikibase_tools/run.sh#L22))
 - Change settings in config.cfg
 - Run [this](https://github.com/stuppie/wikibase-tools/blob/master/wikibase_tools/initial_setup.py) to create an 'equivalent property' and 'equivalent class' property in the Wikibase, or make sure these properties have the appropriate URIs (`http://www.w3.org/2002/07/owl#equivalentProperty` and `http://www.w3.org/2002/07/owl#equivalentClass`).
 - Increase label, description, alias string length limit (see Wikibase Setup Notes below)
-
 
 ### Neo4j to Wikidata Bot: neo4j_to_wd.py
 
@@ -64,3 +77,10 @@ Write out all item and statements in the Wikibase to a nodes and edges file in t
 The only thing that will be lossy is if a reference url was truncated.
 
 For usage: wd_to_neo4j.py --help
+
+### Cron
+
+Use cron jobs in bash to synchronize Neo4j-Wikibase graphs. We deployed each component distributed in different servers.
+
+### Example of use
+
