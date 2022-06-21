@@ -4,7 +4,7 @@ ConfigArgParse==0.13.0
 idna==2.7
 more-itertools==4.3.0
 mwoauth==0.3.2
-numpy==1.15.4
+numpy==1.22.0
 oauthlib==2.1.0
 pandas==0.23.4
 PyJWT==1.6.4
